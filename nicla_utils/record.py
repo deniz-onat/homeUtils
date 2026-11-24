@@ -70,7 +70,7 @@ def record(port: serial.Serial, wav: wave.Wave_write, deadline: float) -> None:
             if time.monotonic() >= next_report:
                 next_report += REPORT_INTERVAL_S
                 seconds = frames * SAMPLES_PER_FRAME / SAMPLE_RATE_HZ
-                print(f"\r{seconds:8.0f} s  peak {dbfs(peak):6.1f} dBFS  clipped {clipped}  dropped {overruns}", end="")
+                print(f"\r{seconds:8.0f} s  peak {dbfs(peak):6.1f} dBFS  clipped {clipped}  dropped {overruns}", end="", flush=True)
     except KeyboardInterrupt:
         pass  # Ctrl-C is the normal way to stop
     port.write(b"STOP\n")
@@ -88,11 +88,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", required=True, help="e.g. /dev/cu.usbmodem1101")
     parser.add_argument("--minutes", type=float, help="stop after this long (default: until Ctrl-C)")
+    parser.add_argument("--label", required=True, help="what is recorded, e.g. bg_empty or claps_door")
     parser.add_argument("--out", type=Path, default=Path("recordings"), help="output folder")
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
-    path = args.out / f"{datetime.now():%Y-%m-%d_%H-%M-%S}.wav"
+    path = args.out / f"{args.label}_{datetime.now():%Y-%m-%d_%H-%M-%S}.wav"
     deadline = time.monotonic() + args.minutes * 60 if args.minutes else math.inf
 
     with serial.Serial(args.port, timeout=0.1) as port, wave.open(str(path), "wb") as wav:
