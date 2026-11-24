@@ -74,5 +74,24 @@ def quantize(coeffs: np.ndarray) -> np.ndarray:
 
 
 def features(pcm: np.ndarray) -> np.ndarray:
-    """uint8 model features (n_frames, 10) for DC-blocked int16 PCM."""
+    """uint8 features (n_frames, 10) exactly as the KWS sketch feeds its model."""
     return quantize(mfcc(pcm))
+
+
+# BrainChip's DS-CNN KWS was trained on TF's MFCC stretched to uint8 over this float range
+# (element 7 of their preprocessed pickle). The board's MFCC maps onto TF's per coefficient
+# with this affine fit (parity_check.py --fit; TF uses magnitude, the board power).
+AKIDA_MFCC_MIN, AKIDA_MFCC_MAX = -39.44708440780639, 16.3944679546356
+AKIDA_SCALE = np.array([0.639468, 0.518333, 0.503039, 0.492063, 0.486501, 0.494212, 0.468435, 0.47841, 0.455667, 0.434374], np.float32)
+AKIDA_OFFSET = np.array([12.090559, -2.119687, -0.431076, -0.591429, -0.427775, -0.486408, -0.420991, -0.45877, -0.424744, -0.428157], np.float32)
+
+
+def quantize_akida(coeffs: np.ndarray) -> np.ndarray:
+    """Board MFCC to the uint8 input BrainChip's pretrained model expects; the clap firmware must do the same."""
+    tf_like = coeffs * AKIDA_SCALE + AKIDA_OFFSET
+    return np.clip(np.round((tf_like - AKIDA_MFCC_MIN) / (AKIDA_MFCC_MAX - AKIDA_MFCC_MIN) * 255), 0, 255).astype(np.uint8)
+
+
+def features_akida(pcm: np.ndarray) -> np.ndarray:
+    """uint8 model features (n_frames, 10) for training and the clap firmware."""
+    return quantize_akida(mfcc(pcm))

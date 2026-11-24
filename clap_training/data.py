@@ -25,12 +25,12 @@ def load_wav(path: Path) -> np.ndarray:
 
 
 def stream_features(recording: str, data: Path = DATA) -> np.ndarray:
-    """uint8 (n_frames, 10) for a whole recording, cached in <data>/features/."""
-    cache = data / "features" / f"{recording}.npy"
+    """uint8 (n_frames, 10) model input frames (frontend.features_akida) for a whole recording, cached in <data>/features/."""
+    cache = data / "features" / f"{recording}.akida.npy"
     if not cache.exists():
         pcm = load_wav(data / "recordings" / f"{recording}.wav")
         cache.parent.mkdir(exist_ok=True)
-        np.save(cache, frontend.features(frontend.dc_block(pcm)))
+        np.save(cache, frontend.features_akida(frontend.dc_block(pcm)))
     return np.load(cache)
 
 
