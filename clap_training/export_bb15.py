@@ -1,0 +1,90 @@
+"""Export the clap model as the BB15 library's four asset files (program + model metadata).
+
+    docker run --rm -v $PWD:/work clap-train python export_bb15.py   # -> cache/run/bb15/
+
+The program is the hardware program of the model mapped onto a virtual AKD1500 (akida
+engine 2.5.0): one sequence HW/conv_0-dense_5, the same name and flatbuffer header as the
+KWS example's program.cpp. Its output scales travel inside the program (akida::ProgramInfo).
+program.h and model_metadata.h are copied from the KWS example; the .cpp files follow it.
+Not yet verified on the board.
+"""
+
+import os
+import shutil
+from pathlib import Path
+
+import akida
+
+MODEL = Path("cache/run/clap.fbz")
+OUT = Path("cache/run/bb15")
+KWS = Path(os.environ.get("KWS_EXAMPLE", "../third_party_kws"))  # bb15_nicla_vision_keyword_spotting
+
+PREAMBLE = """#include "program.h"
+
+// Following tflite example, align on 32-bit if possible.
+#ifdef __has_attribute
+#define HAVE_ATTRIBUTE(x) __has_attribute(x)
+#else
+#define HAVE_ATTRIBUTE(x) 0
+#endif
+#if HAVE_ATTRIBUTE(aligned) || (defined(__GNUC__) && !defined(__clang__))
+#define DATA_ALIGN_ATTRIBUTE __attribute__((aligned(4)))
+#else
+#define DATA_ALIGN_ATTRIBUTE
+#endif
+
+"""
+
+
+def program_cpp(program: bytes) -> str:
+    rows = [", ".join(f"0x{b:02x}" for b in program[i : i + 13]) for i in range(0, len(program), 13)]
+    body = ",\n".join(f"   {r}" for r in rows)
+    return f"{PREAMBLE}const unsigned char program[] DATA_ALIGN_ATTRIBUTE = {{\n{body},\n}};\nconst int64_t program_len = {len(program)};\n"
+
+
+def metadata_cpp(model: akida.Model, program_len: int) -> str:
+    seq = model.sequences[0]
+    first, last = model.layers[0], model.layers[-1]
+    c = lambda v: "true" if v else "false"  # noqa: E731
+    dims = lambda s: ", ".join(str(int(d)) for d in s)  # noqa: E731
+    return f"""#include "model_metadata.h"
+
+const char akida_model_path[] = "{MODEL.name}";
+const char akida_model_ip_version[] = "v1";
+const char akida_model_akida_version[] = "{akida.__version__}";
+const char akida_selected_sequence_name[] = "{seq.name}";
+const char akida_selected_sequence_backend[] = "Hardware";
+const char akida_input_transport[] = "dense";
+const char akida_first_layer_type[] = "InputConvolutional";
+const bool akida_mapping_hw_only = true;
+const bool akida_input_host_quantizer = true;
+const int64_t akida_selected_sequence_index = 0;
+const int64_t akida_sequence_count = {len(model.sequences)};
+const int64_t akida_layer_count = {len(model.layers)};
+const int64_t akida_program_length_bytes = {program_len};
+const int64_t akida_input_rank = 3;
+const int64_t akida_output_rank = 3;
+const uint32_t akida_input_shape[] = {{{dims(model.input_shape)}}};
+const uint32_t akida_output_shape[] = {{{dims(model.output_shape)}}};
+const int64_t akida_first_layer_input_bits = 8;
+const bool akida_first_layer_output_signed = {c(first.parameters.activation == 0)};
+const int64_t akida_last_layer_input_bits = {model.layers[-2].parameters.act_bits};
+const bool akida_last_layer_output_signed = {c(last.parameters.activation == 0)};
+"""
+
+
+def main() -> None:
+    model = akida.Model(str(MODEL))
+    model.map(akida.AKD1500(), hw_only=True)
+    assert len(model.sequences) == 1 and str(model.sequences[0].backend).endswith("Hardware"), model.sequences
+    program = bytes(model.sequences[0].program)
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "program.cpp").write_text(program_cpp(program))
+    (OUT / "model_metadata.cpp").write_text(metadata_cpp(model, len(program)))
+    for header in ("program.h", "model_metadata.h"):
+        shutil.copy(KWS / header, OUT / header)
+    print(f"{OUT}: program {len(program)} bytes, sequence {model.sequences[0].name}, output {model.output_shape}")
+
+
+if __name__ == "__main__":
+    main()

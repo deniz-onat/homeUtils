@@ -7,6 +7,7 @@ board would. Clip starts are rounded to the 20 ms frame grid (at most 10 ms shif
 """
 
 import csv
+import os
 import wave
 from pathlib import Path
 
@@ -14,7 +15,7 @@ import numpy as np
 
 import frontend
 
-DATA = Path.home() / "Desktop/akidaHomeKit_data"
+DATA = Path(os.environ.get("CLAP_DATA", Path.home() / "Desktop/akidaHomeKit_data"))
 LABELS = ("negative", "double_clap")  # class index = position
 
 
@@ -38,6 +39,28 @@ def window_at(feats: np.ndarray, start_s: float) -> np.ndarray | None:
     i = round(start_s * frontend.SAMPLE_RATE_HZ / frontend.HOP)
     w = feats[i : i + frontend.N_FRAMES]
     return w if len(w) == frontend.N_FRAMES else None
+
+
+WARMUP_FRAMES = 10  # 0.2 s, about 7 time constants of the DC blocker
+
+
+def mixed_window(pcm_a: np.ndarray, start_a: float, pcm_b: np.ndarray, start_b: float, gain_a: float, gain_b: float) -> np.ndarray | None:
+    """Model input for gain_a * a + gain_b * b (raw recordings), as the board would compute it.
+
+    Both 1 s windows are snapped to the frame grid like window_at(). The mix gets a 0.2 s
+    lead-in so the DC blocker has settled; b's own DC offset is removed so the offsets do
+    not add. None if either window lacks room for the lead-in or runs past the end.
+    """
+    n = frontend.WINDOW_SAMPLES + WARMUP_FRAMES * frontend.HOP
+    segments = []
+    for pcm, start in ((pcm_a, start_a), (pcm_b, start_b)):
+        first = (round(start * frontend.SAMPLE_RATE_HZ / frontend.HOP) - WARMUP_FRAMES) * frontend.HOP
+        if first < 0 or first + n > len(pcm):
+            return None
+        segments.append(pcm[first : first + n].astype(np.float64))
+    a, b = segments
+    mix = np.clip(np.round(gain_a * a + gain_b * (b - b.mean())), -32768, 32767).astype(np.int16)
+    return frontend.features_akida(frontend.dc_block(mix))[WARMUP_FRAMES:]
 
 
 def clips(data: Path = DATA) -> dict[str, np.ndarray]:
