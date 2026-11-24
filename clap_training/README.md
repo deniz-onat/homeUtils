@@ -71,6 +71,7 @@ uv run clap_listener.py --shortcut "Clap Lights"
 At login, via launchd:
 
 ```bash
+mkdir -p ~/Library/LaunchAgents
 cat > ~/Library/LaunchAgents/local.clap-listener.plist <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
