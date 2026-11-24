@@ -1,4 +1,5 @@
-tensorflow==2.12.*
+tensorflow==2.12.1
 akida==2.5.0
 cnn2snn==2.5.0
+grpcio==1.60.1
 scipy

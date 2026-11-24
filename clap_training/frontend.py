@@ -23,7 +23,7 @@ def dc_block(pcm: np.ndarray) -> np.ndarray:
 
     Exact integer emulation: its floor shift leaves a DC bias of a few hundred LSB that
     reaches the lowest mel band, so a float high-pass would not match.
-    ponytail: pure Python loop, ~1 s per 10 s of audio... run once per recording and cache.
+    ponytail: pure Python loop, about 0.2 s per 100 s of audio; fine for hours of recordings.
     """
     out = np.empty(len(pcm), np.int16)
     prev_in = prev_out = 0
